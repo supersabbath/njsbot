@@ -2,38 +2,62 @@
 
 const config = require('./config.js').settings;
 var express = require('express');
-var app = express.createServer();
-app.configure(function(){
-  app.set('view engine', 'jade');
-  app.set('views', __dirname + '/views');
-  app.use("/css", express.static(__dirname + '/css'));
+
+var commands = execute_bot();
+
+var app = express();
+
+
+app.get('/api/send', function (req, res)
+{
+    var job_name = req.param('job');
+    var status = req.param('status');
+
+    res.send('Hello World!' );
+    config.friends.forEach(function(email){
+
+        commands.send_message(email,"Jenkins launch "+job_name+ " and finished with status "+status);
+    })
+
 });
 
-app.get('/', function(req, res){
-  var data = {
-    title: config.status_message,
-    bot_email: config.client.jid
-  };
-  res.render('index.jade', data);
+
+var server = app.listen(3000, function () {
+
+    var host = server.address().address;
+    var port = server.address().port;
+
+    console.log('Example app listening at http://%s:%s', host, port);
+
 });
 
-app.listen(3000);
+function creaFunc() {
+    var nombre = "Mozilla";
+    function muestraNombre() {
+        return nombre;
+    }
+    return muestraNombre;
+}
 
-execute_bot();
+
 
 function execute_bot() {
+
     /**
      * A simple XMPP client bot aimed specifically at Google Talk
-     * @author Simon Holywell
-     * @version 2011.09.16
+     * @author FerCanon
+     * @version 2015.18.01
      */
+
+    console.log("Staring boot in" + __dirname) ;
     const xmpp = require('node-xmpp');
     const util = require('util');
     const request_helper = require('request');
 
     const conn = new xmpp.Client(config.client);
-    conn.socket.setTimeout(0);
-    conn.socket.setKeepAlive(true, 10000);
+    conn.connection.socket.setTimeout(0);
+
+    conn.connection.socket.setKeepAlive(true, 10000);
 
     var commands = {};
 
@@ -52,7 +76,7 @@ function execute_bot() {
      * @param {Object} stanza
      */
     function accept_subscription_requests(stanza) {
-        if(stanza.is('presence') 
+        if(stanza.is('presence')
            && stanza.attrs.type === 'subscribe') {
             var subscribe_elem = new xmpp.Element('presence', {
                 to: stanza.attrs.from,
@@ -67,13 +91,14 @@ function execute_bot() {
      * Set the status message of the bot to the supplied string
      * @param {String} status_message
      */
+
     function set_status_message(status_message) {
         var presence_elem = new xmpp.Element('presence', { })
-                                .c('show').t('chat').up()
-                                .c('status').t(status_message);
+            .c('show').t('chat').up()
+            .c('status').t(status_message);
         conn.send(presence_elem);
     }
-
+        commands.set_status_message   =set_status_message;
     /**
      * Send a XMPP ping element to the server
      * http://xmpp.org/extensions/xep-0199.html
@@ -93,28 +118,47 @@ function execute_bot() {
         var elem = new xmpp.Element('message', { to: to_jid, type: 'chat' })
                  .c('body').t(message_body);
         conn.send(elem);
-        util.log('[message] SENT: ' + elem.up().toString());
+     //   util.log('[message] SENT: ' + elem.up().toString());
     }
 
+    commands.send_message   =send_message;
+    /**
     /**
      * A wrapper for send message to wrap the supplied command in help
      * text
      */
     function send_unknown_command_message(request) {
+
         send_message(request.stanza.attrs.from, 'Unknown command: "' + request.command + '". Type "help" for more information.');
     }
 
+
+
+    function sendHelloMessage(request){
+
+        var word =request.body;
+
+        var re = /\bh(ola|i)?\b/g;
+        var found = word.match(re);
+
+      //  console.log(found);
+        if(found !== null){
+            send_message(request.from  ,config.hello_message);
+            return false;
+        }
+        return true;
+    }
     /**
      * Send out some help information detailing the available
      * bot commands
      * @param {String} to_jid
      */
     function send_help_information(to_jid) {
-        var message_body = "Currently 'bounce', 'status' and 'twitter' are supported:\n";
-        message_body += "b;example text\n";
-        message_body += "t;some search string\n";
-        message_body += "s;A new status message\n\n";
-        message_body += "See http://njsbot.simonholywell.com/ for more information.\n";
+
+        var message_body = "Hola, soy baby Gabriela, Voy a nacer hoy. Sólo sé estos comandos:\n";
+        message_body += "b;Echo de tus palabras\n";
+        message_body += "t;Buscar en twitter\n";
+        message_body += "w;Buscar en wikipedia\n";
         send_message(to_jid, message_body);
     }
 
@@ -125,6 +169,8 @@ function execute_bot() {
     function split_request(stanza) {
         var message_body = stanza.getChildText('body');
         if(null !== message_body) {
+            util.log("from:" +stanza.attrs.from + " message: "+message_body);
+
             message_body = message_body.split(config.command_argument_separator);
             var command = message_body[0].trim().toLowerCase();
             if(typeof message_body[1] !== "undefined") {
@@ -132,7 +178,10 @@ function execute_bot() {
                          "argument": message_body[1].trim(),
                          "stanza"  : stanza };
             } else {
-                send_help_information(stanza.attrs.from);
+                if(sendHelloMessage({"from":stanza.attrs.from, "body":command}))
+                {
+                    send_help_information(stanza.attrs.from);
+                }
             }
         }
         return false;
@@ -143,6 +192,8 @@ function execute_bot() {
      * @param {Object} stanza
      */
     function message_dispatcher(stanza) {
+//        console.log('Incoming stanza: ', stanza.toString())
+
         if('error' === stanza.attrs.type) {
             util.log('[error] ' + stanza.toString());
         } else if(stanza.is('message')) {
@@ -210,6 +261,34 @@ function execute_bot() {
         return true;
     });
 
+    add_command('w', function(request){
+
+        var to_jid = request.stanza.attrs.from;
+        send_message(to_jid, 'Gabriela is searching on wikipedia, please be patient...');
+
+        var options = {
+            url: 'https://community-wikipedia.p.mashape.com/api.php?action=query&format=json&prop=info&titles='+request.argument,
+            headers: {
+                'X-Mashape-Key': 'bv1DLXqY1fmshsJ8Z5qSSSg4YKZNp166maLjsnboblWBtB2JMB',
+                'Accept':'application/json'
+            }
+        };
+
+        request_helper(options,function(error, response, body) {
+
+                if (!error && response.statusCode == 200) {
+                    var data = JSON.parse(body);
+                    data = data.query.pages;
+                    var key = Object.keys(data)[0];
+                    var title=data[key].title;
+                    title=title.replace(' ','_');
+                    send_message(request.stanza.attrs.from,"Te recomiendo que visites esta pagina: https://en.wikipedia.org/wiki/"+title);
+                }
+        });
+
+        return true;
+    });
+
     /**
      * Set the bot's status message to the provided term
      * @param {Object} request
@@ -228,11 +307,12 @@ function execute_bot() {
         conn.addListener('stanza', accept_subscription_requests);
     }
 
-    conn.addListener('stanza', message_dispatcher);
+    conn.on('stanza',message_dispatcher);
 
     conn.on('online', function() {
-        set_status_message(config.status_message);
 
+        console.log("online")   ;
+        set_status_message(config.status_message);
         // send whitespace to keep the connection alive
         // and prevent timeouts
         setInterval(function() {
@@ -243,4 +323,23 @@ function execute_bot() {
     conn.on('error', function(stanza) {
         util.log('[error] ' + stanza.toString());
     });
+
+    return commands;
 }
+                      /*
+                      *           var options2 = {
+                       url: 'https://community-wikipedia.p.mashape.com/api.php?action=parse&prop=text&pageid='+ key+'&format=json',
+                       headers: {
+                       'X-Mashape-Key': 'bv1DLXqY1fmshsJ8Z5qSSSg4YKZNp166maLjsnboblWBtB2JMB',
+                       'Accept':'application/json'
+                       }
+                       };
+
+                       request_helper(options,function(error, response, body) {
+
+                       if (!error && response.statusCode == 200) {
+                       console.log(body);
+                       }
+                       });
+
+                       }*/
